@@ -1,5 +1,7 @@
 local trafficLight = nil
 local stopPointRadius = 4.5
+local flashingLight = false
+local lightObject = nil
 
 Citizen.CreateThread(function()
 	JayMenu.CreateMenu('trafficLights', Config.Text.MenuTitle, function()
@@ -11,7 +13,7 @@ Citizen.CreateThread(function()
 		if JayMenu.IsMenuOpened('trafficLights') then
 			local playerPed = PlayerPedId()
 			local coords = GetEntityCoords(playerPed)
-			if JayMenu.Button("Place Traffic Light") then
+			if JayMenu.Button(Config.Text.PlaceTrafficLightButton) then
 				local heading = GetEntityHeading(playerPed)
 				if not DoesEntityExist(trafficLight) then
 					ReqModel(Config.TrafficLightProp)
@@ -29,12 +31,13 @@ Citizen.CreateThread(function()
 					SendTheFeedPost(Config.Text.TrafficLightExists)
 				end
 			end
-			if JayMenu.Button("Remove Traffic Light") then
+			if JayMenu.Button(Config.Text.RemoveTrafficLightButton) then
 				TriggerServerEvent('xnTrafficLights:UpdateTrafficLight', ObjToNet(trafficLight), 0, speedZonePoint, stopPointRadius) -- Green
 				DeleteEntity(trafficLight)
+				flashingLight = false
 				speedZonePoint = nil
 			end
-			if JayMenu.Button("Set Stopping Point") then
+			if JayMenu.Button(Config.Text.SetStoppingPointButton) then
 				if DoesEntityExist(trafficLight) then
 					TriggerServerEvent('xnTrafficLights:UpdateTrafficLight', ObjToNet(trafficLight), 0, speedZonePoint, stopPointRadius) -- Green
 					speedZonePoint = nil
@@ -43,20 +46,27 @@ Citizen.CreateThread(function()
 					SendTheFeedPost(Config.Text.PlaceLightFirst)
 				end
 			end
-			if JayMenu.Button("Set Light Green") then
+			if JayMenu.Button(Config.Text.SetLightGreenButton) then
 				if speedZonePoint ~= nil then
 					TriggerServerEvent('xnTrafficLights:UpdateTrafficLight', ObjToNet(trafficLight), 0, speedZonePoint, stopPointRadius) -- Green
 				else
 					SendTheFeedPost(Config.Text.PlaceStopPoint)
 				end
 			end
-			if JayMenu.Button("Set Light Red") then
+			if JayMenu.Button(Config.Text.SetLightRedButton) then
 				if speedZonePoint ~= nil then
 					Citizen.CreateThread(function()
 						TriggerServerEvent('xnTrafficLights:UpdateTrafficLight', ObjToNet(trafficLight), 2, speedZonePoint, stopPointRadius) -- Yellow
 						Citizen.Wait(3000)
 						TriggerServerEvent('xnTrafficLights:UpdateTrafficLight', ObjToNet(trafficLight), 1, speedZonePoint, stopPointRadius) -- Red
 					end)
+				else
+					SendTheFeedPost(Config.Text.PlaceStopPoint)
+				end
+			end
+			if JayMenu.Button(Config.Text.SetLightFlashingYellowButton) then
+				if speedZonePoint ~= nil then
+					TriggerServerEvent('xnTrafficLights:UpdateTrafficLight', ObjToNet(trafficLight), 3, speedZonePoint, stopPointRadius) -- Flashing Yellow
 				else
 					SendTheFeedPost(Config.Text.PlaceStopPoint)
 				end
@@ -130,13 +140,33 @@ local playerLights = {}
 RegisterNetEvent('xnTrafficLights:UpdateTrafficLightSetting')
 AddEventHandler('xnTrafficLights:UpdateTrafficLightSetting', function(object, light, speedZoneCoords, playerName, radius)
 	if light == 0 then -- Green
+		flashingLight = false
 		RemoveSpeedZone(playerLights[playerName]) -- Make them go
 		SetEntityTrafficlightOverride(NetToObj(object), light)
 	elseif light == 1 then -- Red
+		flashingLight = false
 		playerLights[playerName] = AddSpeedZoneForCoord(speedZoneCoords, radius, 0.0, false) -- Make them stop
 		SetEntityTrafficlightOverride(NetToObj(object), light)
-	else -- Yellow
+	elseif light == 2 then -- Yellow
+		flashingLight = false
 		SetEntityTrafficlightOverride(NetToObj(object), light)
+	elseif light == 3 then -- Flashing Yellow
+		RemoveSpeedZone(playerLights[playerName]) -- Make them go
+		lightObject = NetToObj(object)
+		flashingLight = true
+	end
+end)
+
+Citizen.CreateThread(function()
+	while true do
+		if flashingLight then
+			local flashTime = Config.FlashInterval * 1000
+			SetEntityTrafficlightOverride(lightObject, 2)
+			Citizen.Wait(flashTime)
+			SetEntityTrafficlightOverride(lightObject, -1)
+			Citizen.Wait(flashTime)
+		end
+		Citizen.Wait(0)
 	end
 end)
 
